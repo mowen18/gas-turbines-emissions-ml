@@ -1,72 +1,41 @@
-# Gas Turbine Emissions Analytics
+# Gas Turbine CO and NOx Emissions Modeling
 
-This project is a cleanup of an older school notebook into a reproducible machine learning portfolio project. The analysis uses the UCI Machine Learning Repository's Gas Turbine CO and NOx Emission Data Set to model flue gas emissions from gas turbine sensor measurements.
+This project analyzes the UCI Gas Turbine CO and NOx Emission Data Set with a reproducible machine learning workflow. The notebook predicts carbon monoxide (`CO`) and nitrogen oxides (`NOX`) emissions from gas turbine operating and ambient sensor measurements, then compares model performance using a chronological train, validation, and final holdout split.
+
+The finished analysis is in [`notebooks/01_emissions_modeling.ipynb`](notebooks/01_emissions_modeling.ipynb).
 
 ## Dataset
 
 Source: [UCI Machine Learning Repository, dataset id 551](https://archive.ics.uci.edu/dataset/551/gas+turbine+co+and+nox+emission+data+set)
 
-The dataset contains hourly aggregated sensor measurements from a gas turbine in Turkey's north western region. UCI describes the prediction targets as carbon monoxide (`CO`) and nitrogen oxides (`NOx`), with gas turbine operating variables and ambient measurements available as predictors.
+Citation:
 
-The original notebook reads a local `gas_emissions.csv` file. The cleaned project will replace that assumption with a reproducible loader using the `ucimlrepo` package:
+> Gas Turbine CO and NOx Emission Data Set [Dataset]. (2019). UCI Machine Learning Repository. https://doi.org/10.24432/C5WC95
 
-```python
-from ucimlrepo import fetch_ucirepo
+The dataset contains hourly aggregated gas turbine sensor measurements from Turkey's north western region. The analysis uses operating and ambient measurements as predictors and treats `CO` and `NOX` as regression targets.
 
-dataset = fetch_ucirepo(id=551)
-X = dataset.data.features
-y = dataset.data.targets
-```
+## Problem Framing
 
-## Objective
+The primary task is supervised regression: estimate `CO` and NOx emissions from turbine conditions such as ambient temperature, pressure, humidity, turbine inlet temperature, turbine energy yield, compressor discharge pressure, and related operating variables.
 
-Build a clear, reproducible analysis that predicts turbine emissions from operating and ambient conditions. The cleaned version should support:
+This is an educational ML analysis, not a production emissions monitoring or compliance system. No regulatory compliance claims are made.
 
-- Regression models for `CO` and `NOx`.
-- A transparent train, validation, and test split.
-- Standardized preprocessing with scikit-learn pipelines.
-- Model comparison using metrics such as R2 and RMSE.
-- Optional classification experiments for thresholded emissions, clearly separated from the primary regression task.
-
-## Current Notebook Summary
-
-`EmissionsAnalytics.ipynb` currently has 165 cells and is organized as a homework assignment:
-
-- Project description and a feature table image reference.
-- Exploratory data analysis for missing values, correlations, scatter plots, and histograms.
-- Regression setup predicting `CO` while dropping both `CO` and `NOX` from predictors.
-- Train, validation, and test splits followed by standardization.
-- Regression models: Linear Regression, Random Forest, SVR with linear, polynomial, and RBF kernels, Lasso, and Ridge.
-- Hyperparameter tuning with `GridSearchCV` for Random Forest and RBF SVR.
-- PCA transformation and comparisons against the original standardized feature set.
-- Binary classification by thresholding `CO > 3`, followed by SVC and Gaussian Naive Bayes experiments.
-- Final test-set comparison tables for selected regressors and classifiers.
-
-## Notebook Cleanup Plan
-
-The first major notebook-edit pass should:
-
-1. Move the cleaned working notebook to `notebooks/`.
-2. Replace assignment prompts, point values, `YOUR CODE` markers, and personal-course framing with portfolio-style section titles.
-3. Replace `pd.read_csv("gas_emissions.csv")` with the reproducible UCI loader.
-4. Decide whether the primary target is `CO`, `NOx`, or both. A portfolio-ready version should model both targets unless there is a clear reason to narrow scope.
-5. Convert repeated metric helpers into reusable functions in `src/emissions_ml/`.
-6. Use scikit-learn pipelines so preprocessing is fitted only on training data inside the modeling workflow.
-7. Separate regression from threshold-based classification so the project narrative stays coherent.
-8. Regenerate plots and remove stale embedded notebook outputs before final publication.
-
-## Proposed Repository Structure
+## Project Structure
 
 ```text
 .
 ├── README.md
 ├── requirements.txt
-├── EmissionsAnalytics.ipynb
 ├── data/
 │   └── .gitkeep
 ├── images/
-│   └── .gitkeep
+│   ├── actual_vs_predicted_best_model.png
+│   ├── co_distribution.png
+│   ├── correlation_heatmap.png
+│   ├── model_comparison.png
+│   └── nox_distribution.png
 ├── notebooks/
+│   ├── 01_emissions_modeling.ipynb
 │   └── archive/
 │       └── EmissionsAnalytics_original.ipynb
 └── src/
@@ -75,17 +44,91 @@ The first major notebook-edit pass should:
         └── data.py
 ```
 
-## Reproducibility Plan
+Raw CSV files are intentionally not committed. The notebook fetches the dataset through `ucimlrepo` via `src/emissions_ml/data.py`; if running offline, place an equivalent raw file at `data/raw/gas_turbine_emissions.csv`.
 
-1. Create and activate a virtual environment.
-2. Install dependencies from `requirements.txt`.
-3. Fetch dataset id 551 directly from UCI with `ucimlrepo`.
-4. Keep raw and generated data out of Git unless a small derived artifact is intentionally documented.
-5. Run notebooks from the repository root so imports from `src/` work consistently.
-6. Record model metrics and random seeds in the notebook.
+## Modeling Approach
 
-## Citation
+The notebook compares three regression approaches:
 
-Gas Turbine CO and NOx Emission Data Set [Dataset]. (2019). UCI Machine Learning Repository. https://doi.org/10.24432/C5WC95
+- `StandardScaler` + `Ridge(alpha=1.0)` as a stable linear baseline.
+- `RandomForestRegressor` as a nonlinear tree-based model.
+- `StandardScaler` + RBF `SVR`, wrapped for multi-output regression.
 
-The dataset is listed by UCI under a Creative Commons Attribution 4.0 International license.
+The split is chronological:
+
+| Period | Years | Purpose |
+|---|---:|---|
+| Train | 2011-2013 | Fit model parameters and preprocessing |
+| Validation | 2014 | Compare models and select the best average RMSE |
+| Final holdout | 2015 | Evaluate the selected model once |
+
+This avoids selecting the model directly on the final test year.
+
+## Key Results
+
+Best model by 2014 validation average RMSE: **Ridge Regression**.
+
+2015 final holdout performance:
+
+| Target | R2 | RMSE | MAE |
+|---|---:|---:|---:|
+| CO | 0.0255 | 2.206 | 1.689 |
+| NOx | -0.1338 | 11.853 | 10.174 |
+
+The validation results were target-dependent: Random Forest performed best for CO validation RMSE, while Ridge Regression performed best for NOx and won on average validation RMSE. Final holdout performance was weaker than validation, especially for NOx, which suggests year-to-year distribution shift and limits to what the available sensor columns capture.
+
+## Optional Classification Experiment
+
+The notebook also includes an exploratory binary classification exercise for `CO` using the 2011-2013 training median as the threshold.
+
+Threshold: **CO = 1.5242**.
+
+| Period | Accuracy | Balanced Accuracy |
+|---|---:|---:|
+| 2014 validation | 0.7798 | 0.7850 |
+| 2015 final holdout | 0.6410 | 0.7610 |
+
+This threshold is experimental and data-derived. It is not a regulatory threshold.
+
+## Visuals
+
+### CO Distribution
+
+![CO distribution](images/co_distribution.png)
+
+### NOx Distribution
+
+![NOx distribution](images/nox_distribution.png)
+
+### Correlation Heatmap
+
+![Correlation heatmap](images/correlation_heatmap.png)
+
+### Model Comparison
+
+![Model comparison](images/model_comparison.png)
+
+### Actual vs Predicted
+
+![Actual vs predicted for best model](images/actual_vs_predicted_best_model.png)
+
+## How To Reproduce
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+jupyter nbconvert --to notebook --execute notebooks/01_emissions_modeling.ipynb --inplace
+```
+
+The notebook should be run from the repository root so imports from `src/` resolve correctly.
+
+## Limitations And Next Steps
+
+- Ridge Regression won on average validation RMSE, but it did not generalize strongly to the 2015 final holdout period.
+- Random Forest performed best for CO validation RMSE, but not for NOx.
+- NOx final holdout performance was weaker than CO, with negative R2 on 2015.
+- The current validation design is more honest than a random split, but a stronger next step would be rolling-origin validation across years.
+- Feature engineering could explore lagged operating context, operating regimes, interactions, and target transformations.
+- The optional CO classifier is only a modeling exercise; the threshold is based on the training median and has no compliance meaning.
