@@ -35,9 +35,7 @@ This is an educational ML analysis, not a production emissions monitoring or com
 │   ├── model_comparison.png
 │   └── nox_distribution.png
 ├── notebooks/
-│   ├── 01_emissions_modeling.ipynb
-│   └── archive/
-│       └── EmissionsAnalytics_original.ipynb
+│   └── 01_emissions_modeling.ipynb
 └── src/
     └── emissions_ml/
         ├── __init__.py
