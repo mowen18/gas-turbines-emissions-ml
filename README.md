@@ -1,6 +1,6 @@
 # Gas Turbine CO and NOx Emissions Modeling
 
-This project analyzes the UCI Gas Turbine CO and NOx Emission Data Set with a reproducible machine learning workflow. The notebook predicts carbon monoxide (`CO`) and nitrogen oxides (`NOX`) emissions from gas turbine operating and ambient sensor measurements, then compares model performance using a chronological train, validation, and final holdout split.
+This project analyzes the UCI Gas Turbine CO and NOx Emission Data Set with a reproducible machine learning workflow. The notebook predicts carbon monoxide (`CO`) and nitrogen oxides (`NOX`) emissions from gas turbine operating and ambient sensor measurements, then compares model performance using expanding-window rolling-origin validation and an untouched final holdout year.
 
 The finished analysis is in [`notebooks/01_emissions_modeling.ipynb`](notebooks/01_emissions_modeling.ipynb).
 
@@ -18,8 +18,6 @@ The dataset contains hourly aggregated gas turbine sensor measurements from Turk
 
 The primary task is supervised regression: estimate `CO` and NOx emissions from turbine conditions such as ambient temperature, pressure, humidity, turbine inlet temperature, turbine energy yield, compressor discharge pressure, and related operating variables.
 
-This is an educational ML analysis, not a production emissions monitoring or compliance system. No regulatory compliance claims are made.
-
 ## Project Structure
 
 ```text
@@ -36,10 +34,13 @@ This is an educational ML analysis, not a production emissions monitoring or com
 │   └── nox_distribution.png
 ├── notebooks/
 │   └── 01_emissions_modeling.ipynb
-└── src/
-    └── emissions_ml/
-        ├── __init__.py
-        └── data.py
+├── src/
+│   └── emissions_ml/
+│       ├── __init__.py
+│       ├── data.py
+│       └── validation.py
+└── tests/
+    └── test_validation.py
 ```
 
 Raw CSV files are intentionally not committed. The notebook fetches the dataset through `ucimlrepo` via `src/emissions_ml/data.py`; if running offline, place an equivalent raw file at `data/raw/gas_turbine_emissions.csv`.
@@ -52,41 +53,61 @@ The notebook compares three regression approaches:
 - `RandomForestRegressor` as a nonlinear tree-based model.
 - `StandardScaler` + RBF `SVR`, wrapped for multi-output regression.
 
-The split is chronological:
+Model comparison uses expanding-window annual validation:
 
-| Period | Years | Purpose |
-|---|---:|---|
-| Train | 2011-2013 | Fit model parameters and preprocessing |
-| Validation | 2014 | Compare models and select the best average RMSE |
-| Final holdout | 2015 | Evaluate the selected model once |
+| Fold | Training years | Validation year |
+|---:|---:|---:|
+| 1 | 2011 | 2012 |
+| 2 | 2011-2012 | 2013 |
+| 3 | 2011-2013 | 2014 |
 
-This avoids selecting the model directly on the final test year.
+Each fold trains only on years that precede the validation year. The 2015 data is excluded from model comparison, then used once as the final holdout after the selected model is refit on all available pre-holdout data from 2011-2014.
+
+Model selection uses mean normalized RMSE across validation years and targets:
+
+```text
+normalized RMSE = RMSE / target standard deviation in that validation fold
+```
+
+This avoids selecting a model by directly averaging raw `CO` and `NOX` RMSE values, which are on different numerical scales. Raw target-level R2, RMSE, and MAE are still reported for interpretation. RBF SVR keeps the existing deterministic 5,000-row training cap within each fold and within the final 2011-2014 refit if selected.
 
 ## Key Results
 
-Best model by 2014 validation average RMSE: **Ridge Regression**.
+Best model by mean normalized RMSE across rolling-origin validation folds: **Random Forest**.
 
-2015 final holdout performance:
+Model-selection summary:
+
+| Model | Mean normalized RMSE | Std normalized RMSE | Mean R2 | Mean RMSE | Mean MAE |
+|---|---:|---:|---:|---:|---:|
+| Random Forest | 0.7217 | 0.1631 | 0.4491 | 4.750 | 3.571 |
+| RBF SVR | 0.7442 | 0.2175 | 0.4080 | 4.815 | 3.640 |
+| Ridge Regression | 0.7769 | 0.0321 | 0.3903 | 5.295 | 3.808 |
+
+Annual mean normalized RMSE across `CO` and `NOX`:
+
+| Validation year | Ridge Regression | Random Forest | RBF SVR |
+|---:|---:|---:|---:|
+| 2012 | 0.754 | 0.643 | 0.622 |
+| 2013 | 0.762 | 0.613 | 0.615 |
+| 2014 | 0.814 | 0.909 | 0.995 |
+
+The annual results are intentionally shown because validation performance is not stationary. Random Forest has the best overall mean normalized RMSE, but its average lead over RBF SVR is modest and only three validation years are available. All models degrade on the 2014 validation fold, especially the nonlinear models.
+
+Random Forest target-level rolling-origin summary:
+
+| Target | Mean R2 | Std R2 | Mean RMSE | Std RMSE | Mean MAE | Std MAE | Mean normalized RMSE | Std normalized RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| CO | 0.5059 | 0.1263 | 1.590 | 0.242 | 0.872 | 0.116 | 0.6987 | 0.0940 |
+| NOx | 0.3924 | 0.4596 | 7.911 | 2.590 | 6.269 | 2.644 | 0.7448 | 0.2819 |
+
+After selection, Random Forest was refit on the full 2011-2014 development period. 2015 final holdout performance:
 
 | Target | R2 | RMSE | MAE |
 |---|---:|---:|---:|
-| CO | 0.0255 | 2.206 | 1.689 |
-| NOx | -0.1338 | 11.853 | 10.174 |
+| CO | 0.4719 | 1.624 | 1.037 |
+| NOx | -0.0212 | 11.249 | 9.244 |
 
-The validation results were target-dependent: Random Forest performed best for CO validation RMSE, while Ridge Regression performed best for NOx and won on average validation RMSE. Final holdout performance was weaker than validation, especially for NOx, which suggests year-to-year distribution shift and limits to what the available sensor columns capture.
-
-## Optional Classification Experiment
-
-The notebook also includes an exploratory binary classification exercise for `CO` using the 2011-2013 training median as the threshold.
-
-Threshold: **CO = 1.5242**.
-
-| Period | Accuracy | Balanced Accuracy |
-|---|---:|---:|
-| 2014 validation | 0.7798 | 0.7850 |
-| 2015 final holdout | 0.6410 | 0.7610 |
-
-This threshold is experimental and data-derived. It is not a regulatory threshold.
+The rolling-origin results suggest useful nonlinear signal, but the 2014 validation degradation and the weak 2015 NOx holdout R2 are evidence of year-to-year distribution shift and limits to what the available sensor columns capture. The 2015 actual-versus-predicted plots also show underprediction of extreme CO values and compression toward the middle for NOx.
 
 ## Visuals
 
@@ -117,6 +138,7 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+PYTHONPATH=src python -m unittest discover -s tests
 jupyter nbconvert --to notebook --execute notebooks/01_emissions_modeling.ipynb --inplace
 ```
 
@@ -124,9 +146,8 @@ The notebook should be run from the repository root so imports from `src/` resol
 
 ## Limitations And Next Steps
 
-- Ridge Regression won on average validation RMSE, but it did not generalize strongly to the 2015 final holdout period.
-- Random Forest performed best for CO validation RMSE, but not for NOx.
-- NOx final holdout performance was weaker than CO, with negative R2 on 2015.
-- The current validation design is more honest than a random split, but a stronger next step would be rolling-origin validation across years.
+- Rolling-origin validation is more reliable than a single 2014 validation split, but it still has only three annual folds.
+- Random Forest won by mean normalized RMSE, but the average improvement over RBF SVR was modest and its 2014 validation performance was weaker than its 2012 and 2013 validation performance.
+- NOx final holdout performance remained weaker than CO, with slightly negative R2 on 2015.
+- The RBF SVR comparison is intentionally capped at 5,000 deterministic training rows per fold for runtime, so it is not a full-data SVR benchmark.
 - Feature engineering could explore lagged operating context, operating regimes, interactions, and target transformations.
-- The optional CO classifier is only a modeling exercise; the threshold is based on the training median and has no compliance meaning.
