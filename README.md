@@ -18,8 +18,6 @@ The dataset contains hourly aggregated gas turbine sensor measurements from Turk
 
 The primary task is supervised regression: estimate `CO` and NOx emissions from turbine conditions such as ambient temperature, pressure, humidity, turbine inlet temperature, turbine energy yield, compressor discharge pressure, and related operating variables.
 
-This is an educational ML analysis, not a production emissions monitoring or compliance system. No regulatory compliance claims are made.
-
 ## Project Structure
 
 ```text
@@ -111,18 +109,6 @@ After selection, Random Forest was refit on the full 2011-2014 development perio
 
 The rolling-origin results suggest useful nonlinear signal, but the 2014 validation degradation and the weak 2015 NOx holdout R2 are evidence of year-to-year distribution shift and limits to what the available sensor columns capture. The 2015 actual-versus-predicted plots also show underprediction of extreme CO values and compression toward the middle for NOx.
 
-## Optional Classification Experiment
-
-The notebook also includes an exploratory binary classification exercise for `CO` using the 2011-2014 development median as the threshold.
-
-Threshold: **CO = 1.5619**, based on the 2011-2014 development median.
-
-| Period | Accuracy | Balanced Accuracy |
-|---|---:|---:|
-| 2015 final holdout | 0.6339 | 0.7545 |
-
-This threshold is experimental and data-derived. It is not a regulatory threshold.
-
 ## Visuals
 
 ### CO Distribution
@@ -165,4 +151,3 @@ The notebook should be run from the repository root so imports from `src/` resol
 - NOx final holdout performance remained weaker than CO, with slightly negative R2 on 2015.
 - The RBF SVR comparison is intentionally capped at 5,000 deterministic training rows per fold for runtime, so it is not a full-data SVR benchmark.
 - Feature engineering could explore lagged operating context, operating regimes, interactions, and target transformations.
-- The optional CO classifier is only a modeling exercise; the threshold is based on the development-period median and has no compliance meaning.
